@@ -7,7 +7,7 @@ import copy
 from pathlib import Path
 
 from compute_energy import gradients, stress, compute_energy
-from utils import parse_mesh
+from utils import parse_mesh, append_step_column
 
 
 
@@ -39,8 +39,9 @@ def plot_field(inp, field, T, figname, figdir, dpi=300):
     plt.savefig(figdir["pdf"]/Path(str(figname)+'.pdf'), transparent=True, bbox_inches='tight', dpi=dpi)
 
 
-def plot_energy(field_comp, disp, pffmodel, matprop, inp, T_conn, area_elem, trainedModel_path, figdir):
+def plot_energy(field_comp, disp, pffmodel, matprop, inp, T_conn, area_elem, trainedModel_path, figdir, total_steps=None):
     energy = np.zeros([1, 2])
+    n_steps = total_steps if total_steps is not None else len(disp)
 
     j = 0
     file_exists = True
@@ -50,10 +51,14 @@ def plot_energy(field_comp, disp, pffmodel, matprop, inp, T_conn, area_elem, tra
             break
         field_comp.net.load_state_dict(torch.load(model, map_location=torch.device('cpu')))
         field_comp.lmbda = torch.tensor(disp[j])
+        inp_step = inp
+        if inp_step.shape[1] == 2:
+            inp_step = append_step_column(inp_step, step_idx=j, total_steps=n_steps)
         if T_conn == None:
-            inp.requires_grad = True
-        u, v, alpha = field_comp.fieldCalculation(inp)
-        E_el, E_d, _ = compute_energy(inp, u, v, alpha, alpha, matprop, pffmodel, area_elem, T_conn)
+            inp_step.requires_grad = True
+        field_outputs = field_comp.fieldCalculation(inp_step)
+        u, v, alpha = field_outputs[0], field_outputs[1], field_outputs[2]
+        E_el, E_d, _ = compute_energy(inp_step, u, v, alpha, alpha, matprop, pffmodel, area_elem, T_conn)
         E_el, E_d = E_el.detach().numpy(), E_d.detach().numpy()
         energy = np.append(energy, np.array([[E_el, E_d]]), axis = 0)
         j += 1
@@ -75,24 +80,29 @@ def plot_energy(field_comp, disp, pffmodel, matprop, inp, T_conn, area_elem, tra
         print(f"No trained network available in {trainedModel_path}")
 
 
-def img_plot(field_comp, pffmodel, matprop, inp, T, area_elem, figdir, dpi=300):
+def img_plot(field_comp, pffmodel, matprop, inp, T, area_elem, figdir, dpi=300, step_idx=None, total_steps=None):
+    input_pts = inp
+    if step_idx is not None and input_pts.shape[1] == 2:
+        n_steps = total_steps if total_steps is not None else step_idx+1
+        input_pts = append_step_column(input_pts, step_idx=step_idx, total_steps=n_steps)
     if T == None:
-        inp.requires_grad = True
-    u, v, alpha = field_comp.fieldCalculation(inp)
-    strain_11, strain_22, strain_12, grad_alpha_x, grad_alpha_y = gradients(inp, u, v, alpha, area_elem, T)
+        input_pts.requires_grad = True
+    field_outputs = field_comp.fieldCalculation(input_pts)
+    u, v, alpha = field_outputs[0], field_outputs[1], field_outputs[2]
+    strain_11, strain_22, strain_12, grad_alpha_x, grad_alpha_y = gradients(input_pts, u, v, alpha, area_elem, T)
 
     if T == None:
-        input_elem = inp
+        input_elem = input_pts
         alpha_elem = alpha
     else:    
-        input_elem = (inp[T[:, 0], :] + inp[T[:, 1], :] + inp[T[:, 2], :])/3
+        input_elem = (input_pts[T[:, 0], :] + input_pts[T[:, 1], :] + input_pts[T[:, 2], :])/3
         alpha_elem = (alpha[T[:, 0]] + alpha[T[:, 1]] + alpha[T[:, 2]])/3
     stress_11, stress_22, stress_12 = stress(strain_11, strain_22, strain_12, alpha_elem, matprop, pffmodel) 
 
     stress_1 = 0.5*(stress_11 + stress_22) + torch.sqrt((0.5*(stress_11 - stress_22))**2 + stress_12**2)
     stress_2 = 0.5*(stress_11 + stress_22) - torch.sqrt((0.5*(stress_11 - stress_22))**2 + stress_12**2)
 
-    input_pt = copy.deepcopy(inp)
+    input_pt = copy.deepcopy(input_pts)
     input_el = copy.deepcopy(input_elem)
     input_pt, input_el = input_pt.detach().numpy(), input_el.detach().numpy()
     u, v, alpha = u.detach().numpy(), v.detach().numpy(), alpha.detach().numpy()
@@ -102,8 +112,8 @@ def img_plot(field_comp, pffmodel, matprop, inp, T, area_elem, figdir, dpi=300):
     disp = field_comp.lmbda.item()
 
     if T == None:
-        x = input_pt[:, 0]
-        y = input_pt[:, 1]
+        x = input_pt[:, -2]
+        y = input_pt[:, -1]
         T = tri.Triangulation(x, y).triangles
 
     fig, ax = plt.subplots(figsize=(9.5, 2), ncols=3)

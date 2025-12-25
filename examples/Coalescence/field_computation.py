@@ -7,7 +7,7 @@ class FieldComputation:
     Dirichlet boundary conditions (BCs) and other constraints.
 
     net: neural network
-    domain_extrema: tensor([[x_min, x_max], [y_min, y_max]])
+    domain_extrema: tensor([[t_min, t_max], [x_min, x_max], [y_min, y_max]])
     lmbda: prescribed displacement
     theta: Angle of the direction of loading from the x-axis (not used in all problems)
     alpha_ansatz: type of function to constrain alpha in {'smooth', 'nonsmooth'}
@@ -17,38 +17,64 @@ class FieldComputation:
     update_hist_alpha: alpha_field for use in the next loading step to enforce irreversibility
 
     '''
-    def __init__(self, net, domain_extrema, lmbda, theta, alpha_constraint = 'nonsmooth'):
+    def __init__(self, net, domain_extrema, lmbda, theta, alpha_constraint = 'nonsmooth',
+                 temperature_bounds = (0.0, 1.0), damage_bounds = (0.0, 1.0), fatigue_bounds = (0.0, 1.0)):
         self.net = net
         self.domain_extrema = domain_extrema
         self.theta = theta
         self.lmbda = lmbda
+        self.temperature_bounds = temperature_bounds
+        self.damage_bounds = damage_bounds
+        self.fatigue_bounds = fatigue_bounds
+        self.last_aux_state = dict()
         if alpha_constraint == 'smooth':
             self.alpha_constraint = torch.sigmoid
         else:
             self.alpha_constraint = NonsmoothSigmoid(2.0, 1e-3)
 
     def fieldCalculation(self, inp):
-        x0 = self.domain_extrema[0, 0]
-        xL = self.domain_extrema[0, 1]
-        y0 = self.domain_extrema[1, 0]
-        yL = self.domain_extrema[1, 1]
+        x0 = self.domain_extrema[-2, 0]
+        xL = self.domain_extrema[-2, 1]
+        y0 = self.domain_extrema[-1, 0]
+        yL = self.domain_extrema[-1, 1]
         
         out = self.net(inp)
         out_disp = out[:, 0:2]
         
         alpha = self.alpha_constraint(out[:, 2])
+        temperature = self._bounded_field(out[:, 3], self.temperature_bounds) if out.shape[1] > 3 else None
+        damage = self._bounded_field(out[:, 4], self.damage_bounds) if out.shape[1] > 4 else None
+        fatigue = self._bounded_field(out[:, 5], self.fatigue_bounds) if out.shape[1] > 5 else None
 
         u = ((inp[:, -1]-y0)*(yL-inp[:, -1])*out_disp[:, 0] + \
                 (inp[:, -1]-y0)/(yL-y0)*torch.cos(self.theta))*self.lmbda
         v = ((inp[:, -1]-y0)*(yL-inp[:, -1])*out_disp[:, 1] + \
             (inp[:, -1]-y0)/(yL-y0)*torch.sin(self.theta))*self.lmbda
 
-        return u, v, alpha
+        aux_fields = {"temperature": temperature, "damage": damage, "fatigue": fatigue}
+        return u, v, alpha, aux_fields
     
     def update_hist_alpha(self, inp):
-        _, _, pred_alpha = self.fieldCalculation(inp)
+        field_outputs = self.fieldCalculation(inp)
+        if isinstance(field_outputs, tuple) and len(field_outputs) > 3:
+            _, _, pred_alpha, aux_fields = field_outputs
+        else:
+            _, _, pred_alpha = field_outputs
+            aux_fields = {}
         pred_alpha = pred_alpha.detach()
-        return pred_alpha
+        aux_state = {k: v.detach() for k, v in aux_fields.items() if v is not None}
+        self.last_aux_state = aux_state
+        return pred_alpha, aux_state
+    
+    def _bounded_field(self, raw_field, bounds):
+        if raw_field is None:
+            return None
+        constrained = torch.sigmoid(raw_field)
+        if bounds is None:
+            return constrained
+        lower, upper = bounds
+        scaled = constrained*(upper-lower) + lower
+        return torch.clamp(scaled, min=lower, max=upper)
     
 
 class NonsmoothSigmoid(nn.Module):

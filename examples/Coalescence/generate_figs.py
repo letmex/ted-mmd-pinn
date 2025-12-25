@@ -7,6 +7,7 @@ from field_computation import FieldComputation
 from construct_model import construct_model
 from input_data_from_mesh import prep_input_data
 from plotting import plot_mesh, plot_field, img_plot, plot_energy
+from utils import append_step_column
 
 
 
@@ -36,6 +37,8 @@ field_comp.theta = field_comp.theta.to(device)
 # Prepare input data
 inp, T_conn, area_T, hist_alpha = prep_input_data(matprop, pffmodel, crack_dict, numr_dict, 
                                                          mesh_file=fine_mesh_file, device=device)
+disp = load_schedule["displacement"]
+total_steps = len(disp)
 
 
 ## ############################################################################
@@ -65,10 +68,13 @@ if Path.is_dir(model_path):
         print(f"generating plots for prescribed displacement: {disp[disp_idx]}")
         field_comp.net.load_state_dict(torch.load(model, map_location=torch.device('cpu')))
         field_comp.lmbda = torch.tensor(disp[disp_idx]).to(device)
-        img_plot(field_comp, pffmodel, matprop, inp, T_conn, area_T, figdir, dpi=600)
+        field_comp.temperature = torch.tensor(load_schedule["temperature"][disp_idx]).to(device)
+        field_comp.cycle = torch.tensor(load_schedule["cycles"][disp_idx]).to(device)
+        inp_step = append_step_column(inp, step_idx=disp_idx, total_steps=total_steps)
+        img_plot(field_comp, pffmodel, matprop, inp_step, T_conn, area_T, figdir, dpi=600, step_idx=disp_idx, total_steps=total_steps)
     else:
         print(f"No trained network available with filename: {model}")
 
 
     # plot energy vs prescribed displacement
-    plot_energy(field_comp, disp, pffmodel, matprop, inp, T_conn, area_T, trainedModel_path, figdir)
+    plot_energy(field_comp, disp, pffmodel, matprop, inp, T_conn, area_T, trainedModel_path, figdir, total_steps=total_steps)

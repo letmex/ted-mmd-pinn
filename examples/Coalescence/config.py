@@ -38,7 +38,8 @@ network_dict = {"model_type": 'MLP',
                 "neurons": int(sys.argv[2]) if len(sys.argv) > 2 else 100,
                 "seed": int(sys.argv[3]) if len(sys.argv) > 3 else 1,
                 "activation": str(sys.argv[4]) if len(sys.argv) > 4 else 'TrainableReLU',
-                "init_coeff": float(sys.argv[5]) if len(sys.argv) > 5 else 1.0}
+                "init_coeff": float(sys.argv[5]) if len(sys.argv) > 5 else 1.0,
+                "output_dimension": 6}
 
 '''
 optimizer_dict:
@@ -78,13 +79,13 @@ mat_prop_dict = {"mat_E" : 1.0, "mat_nu" : 1/3, "w1" : 1.0, "l0" : 0.01}
 
 # Domain definition
 '''
-domain_extrema: tensor([[x_min, x_max], [y_min, y_max]])
+domain_extrema: tensor([[t_min, t_max], [x_min, x_max], [y_min, y_max]])
 x_init: list of x-coordinates of one end of cracks
 y_init: list of y-coordinates of one end of cracks
 L_crack: list of crack lengths
 angle_crack: list of angles of cracks from the x-axis with the origin shifted to (x_init[i], y_init[i])
 '''
-domain_extrema = torch.tensor([[-0.5, 0.5], [-0.5, 0.5]])
+domain_extrema = torch.tensor([[0.0, 1.0], [-0.5, 0.5], [-0.5, 0.5]])
 crack_dict = {"x_init" : [-0.25, -0.05, 0.15], "y_init" : [-0.15, -0.05, 0.05], 
               "L_crack" : [0.14142, 0.14142, 0.14142], "angle_crack" : [np.pi/4, np.pi/4, np.pi/4]}
 
@@ -93,6 +94,9 @@ crack_dict = {"x_init" : [-0.25, -0.05, 0.15], "y_init" : [-0.15, -0.05, 0.05],
 loading_angle = torch.tensor([np.pi/2])
 disp = np.concatenate((np.linspace(0.0, 0.06, 4), np.linspace(0.08, 0.22, 29)), axis=0)
 disp = disp[1:]
+temperature = np.linspace(0.0, 1.0, disp.shape[0])
+cycles = np.arange(1, disp.shape[0]+1)
+load_schedule = {"displacement": disp, "temperature": temperature, "cycles": cycles}
 
 ## ############################################################################
 ## ############################################################################
@@ -139,6 +143,7 @@ with open(model_path/Path('model_settings.txt'), 'w') as file:
     file.write(f'\nseed: {network_dict["seed"]}')
     file.write(f'\nactivation: {network_dict["activation"]}')
     file.write(f'\ncoeff: {network_dict["init_coeff"]}')
+    file.write(f'\noutput_dimension: {network_dict["output_dimension"]}')
     file.write(f'\nPFF_model: {PFF_model_dict["PFF_model"]}')
     file.write(f'\nse_split: {PFF_model_dict["se_split"]}')
     file.write(f'\ngradient_type: {numr_dict["gradient_type"]}')

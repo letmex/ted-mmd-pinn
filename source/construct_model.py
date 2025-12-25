@@ -16,13 +16,15 @@ def construct_model(PFF_model_dict, mat_prop_dict, network_dict, domain_extrema,
                                 l0 = torch.tensor(mat_prop_dict["l0"], device=device))
 
     # Neural network
+    torch.manual_seed(network_dict["seed"])
+
+    output_dimension = network_dict.get("output_dimension", domain_extrema.shape[0] + 1)
     network = NeuralNet(input_dimension=domain_extrema.shape[0], 
-                        output_dimension=domain_extrema.shape[0]+1,
+                        output_dimension=output_dimension,
                         n_hidden_layers=network_dict["hidden_layers"],
                         neurons=network_dict["neurons"],
                         activation=network_dict["activation"],
                         init_coeff=network_dict["init_coeff"])
-    torch.manual_seed(network_dict["seed"])
     init_xavier(network)
 
     return pffmodel, matprop, network
