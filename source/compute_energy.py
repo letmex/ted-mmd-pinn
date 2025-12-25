@@ -89,8 +89,8 @@ def gradients(inp, u, v, alpha, area_elem, T_conn = None):
 def field_grads(inp, field, area_elem, T = None):
     if T == None:
         grad_field = torch.autograd.grad(field.sum(), inp, create_graph=True)[0]
-        grad_x = grad_field[:, 0]
-        grad_y = grad_field[:, 1]
+        grad_x = grad_field[..., -2]
+        grad_y = grad_field[..., -1]
     else:
         grad_x = (inp[T[:, 1], -1]-inp[T[:, 2], -1])*field[T[:, 0]] + \
                 (inp[T[:, 2], -1]-inp[T[:, 0], -1])*field[T[:, 1]] + \
