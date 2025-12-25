@@ -143,3 +143,17 @@ def parse_mesh(filename="meshed_geom.msh", gradient_type = 'numerical'):
         Y = (Y[T[:, 0]] + Y[T[:, 1]] + Y[T[:, 2]])/3
 
     return X, Y, T, area
+
+
+def append_step_column(inp, step_idx, total_steps):
+    '''
+    Appends a normalized step/time column to the input tensor.
+    This is useful when the network needs awareness of the loading/temporal index.
+
+    inp: spatial input tensor of shape (N, 2) containing x and y
+    step_idx: integer index of the current step
+    total_steps: total number of steps in the loading schedule
+    '''
+    denom = max(total_steps - 1, 1)
+    step_value = torch.full((inp.shape[0], 1), float(step_idx)/denom, device=inp.device, dtype=inp.dtype)
+    return torch.cat((step_value, inp), dim=1)

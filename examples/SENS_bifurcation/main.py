@@ -36,6 +36,6 @@ field_comp.theta = field_comp.theta.to(device)
 # Training #####################################################################
 ## #############################################################################
 if __name__ == "__main__":
-    train(field_comp, disp, pffmodel, matprop, crack_dict, numr_dict,
+    train(field_comp, load_schedule, pffmodel, matprop, crack_dict, numr_dict,
           optimizer_dict, training_dict, coarse_mesh_file, fine_mesh_file, 
           device, trainedModel_path, intermediateModel_path, writer)
