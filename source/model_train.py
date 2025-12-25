@@ -8,8 +8,9 @@ from input_data_from_mesh import prep_input_data
 from fit import fit, fit_with_early_stopping
 from optim import *
 from plotting import plot_field
+from utils import append_step_column
 
-def train(field_comp, disp, pffmodel, matprop, crack_dict, numr_dict, optimizer_dict, training_dict, coarse_mesh_file, fine_mesh_file, device, trainedModel_path, intermediateModel_path, writer):
+def train(field_comp, load_schedule, pffmodel, matprop, crack_dict, numr_dict, optimizer_dict, training_dict, coarse_mesh_file, fine_mesh_file, device, trainedModel_path, intermediateModel_path, writer):
     '''
     Neural network training: pretraining with a coarser mesh in the first stage before the main training proceeds.
     
@@ -22,13 +23,23 @@ def train(field_comp, disp, pffmodel, matprop, crack_dict, numr_dict, optimizer_
     Trained models and loss data are saved in the trainedModel_path directory.
     '''
     
+    disp = load_schedule["displacement"]
+    temperature_steps = load_schedule.get("temperature", None)
+    cycle_steps = load_schedule.get("cycles", None)
+    total_steps = len(disp)
+    assert temperature_steps is None or len(temperature_steps) == total_steps, "temperature schedule length must match displacement schedule"
+    assert cycle_steps is None or len(cycle_steps) == total_steps, "cycle schedule length must match displacement schedule"
+
     ## #############################################################################
     # Initial training #############################################################
     # Prepare initial input data
-    inp, T_conn, area_T, hist_alpha = prep_input_data(matprop, pffmodel, crack_dict, numr_dict, mesh_file=coarse_mesh_file, device=device)
+    base_inp, T_conn, area_T, hist_alpha = prep_input_data(matprop, pffmodel, crack_dict, numr_dict, mesh_file=coarse_mesh_file, device=device)
+    inp = append_step_column(base_inp, step_idx=0, total_steps=total_steps)
     outp = torch.zeros(inp.shape[0], 1).to(device)
     training_set = DataLoader(torch.utils.data.TensorDataset(inp, outp), batch_size=inp.shape[0], shuffle=False)
     field_comp.lmbda = torch.tensor(disp[0]).to(device)
+    field_comp.temperature = torch.tensor(temperature_steps[0] if temperature_steps is not None else 0.0).to(device)
+    field_comp.cycle = torch.tensor(cycle_steps[0] if cycle_steps is not None else 0.0).to(device)
 
     loss_data = list()
     start = time.time()
@@ -63,13 +74,16 @@ def train(field_comp, disp, pffmodel, matprop, crack_dict, numr_dict, optimizer_
     # Main training ################################################################
 
     # Prepare input data
-    inp, T_conn, area_T, hist_alpha = prep_input_data(matprop, pffmodel, crack_dict, numr_dict, mesh_file=fine_mesh_file, device=device)
-    outp = torch.zeros(inp.shape[0], 1).to(device)
-    training_set = DataLoader(torch.utils.data.TensorDataset(inp, outp), batch_size=inp.shape[0], shuffle=False)
+    base_inp, T_conn, area_T, hist_alpha = prep_input_data(matprop, pffmodel, crack_dict, numr_dict, mesh_file=fine_mesh_file, device=device)
+    outp = torch.zeros(base_inp.shape[0], 1).to(device)
 
     # solve BVP by step wise loading.
     for j, disp_i in enumerate(disp):
+        inp = append_step_column(base_inp, step_idx=j, total_steps=total_steps)
+        training_set = DataLoader(torch.utils.data.TensorDataset(inp, outp), batch_size=inp.shape[0], shuffle=False)
         field_comp.lmbda = torch.tensor(disp_i).to(device)
+        field_comp.temperature = torch.tensor(temperature_steps[j] if temperature_steps is not None else 0.0).to(device)
+        field_comp.cycle = torch.tensor(cycle_steps[j] if cycle_steps is not None else 0.0).to(device)
         print(f'idx: {j}; displacement: {field_comp.lmbda}')
         loss_data = list()
 
@@ -96,7 +110,13 @@ def train(field_comp, disp, pffmodel, matprop, crack_dict, numr_dict, optimizer_
         end = time.time()
         print(f"Execution time: {(end-start)/60:.03f}minutes")
 
-        hist_alpha = field_comp.update_hist_alpha(inp)
+        hist_update = field_comp.update_hist_alpha(inp)
+        if isinstance(hist_update, tuple):
+            hist_alpha, aux_state = hist_update
+            field_comp.hist_aux_state = aux_state
+        else:
+            hist_alpha = hist_update
+            field_comp.hist_aux_state = {}
 
         torch.save(field_comp.net.state_dict(), trainedModel_path/Path('trained_1NN_' + str(j) + '.pt'))
         with open(trainedModel_path/Path('trainLoss_1NN_' + str(j) + '.npy'), 'wb') as file:
