@@ -194,7 +194,15 @@ def train(field_comp, load_schedule, pffmodel, matprop, crack_dict, numr_dict,
             )
 
             # 温度放大因子（可为常数或场）
-            temp_boost = pffmodel.temperature_boost(inp)
+            temp_boost = pffmodel.temperature_boost(field_comp.temperature)
+
+            # 然后再按 Y_bar 的 shape 展开
+            if not torch.is_tensor(temp_boost):
+                temp_boost = torch.tensor(temp_boost, device=inp.device, dtype=inp.dtype)
+            if temp_boost.ndim == 0:
+                temp_boost = temp_boost.expand_as(Y_bar)
+
+            
             if not torch.is_tensor(temp_boost):
                 temp_boost = torch.tensor(
                     temp_boost, device=inp.device, dtype=inp.dtype
