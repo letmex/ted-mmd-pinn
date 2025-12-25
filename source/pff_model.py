@@ -30,3 +30,6 @@ class PFFModel:
             return 27/64/self.tol_ir**2
         elif self.PFF_model == 'AT2':
             return 1.0/self.tol_ir**2-1.0
+
+    def temperature_boost(self, inp):
+        return 1.0 if not hasattr(inp, "new_zeros") else inp.new_ones(inp.shape[0])

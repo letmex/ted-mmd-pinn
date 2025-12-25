@@ -29,7 +29,7 @@ class EarlyStopping:
 
 
 def fit(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matprop, pffmodel, 
-        weight_decay, num_epochs, optimizer, intermediateModel_path=None, writer=None, training_dict={}):
+        weight_decay, num_epochs, optimizer, hist_Y_max_over_H=None, intermediateModel_path=None, writer=None, training_dict={}):
     loss_data = list()
     
     # Loop over epochs
@@ -43,7 +43,9 @@ def fit(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matpro
                 if T_conn == None:
                     inp_train.requires_grad = True
                 u, v, alpha = field_comp.fieldCalculation(inp_train)
-                loss_E_el, loss_E_d, loss_hist = compute_energy(inp_train, u, v, alpha, hist_alpha, matprop, pffmodel, area_T, T_conn)
+                loss_E_el, loss_E_d, loss_hist, _ = compute_energy(
+                    inp_train, u, v, alpha, hist_alpha, matprop, pffmodel, area_T, T_conn, hist_Y_max_over_H
+                )
                 loss_var = torch.log10(loss_E_el + loss_E_d + loss_hist)
 
                 # weight regularization
@@ -80,7 +82,7 @@ def fit(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matpro
 
 
 def fit_with_early_stopping(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matprop, pffmodel, 
-                            weight_decay, num_epochs, optimizer, min_delta, intermediateModel_path=None, writer=None, training_dict={}):
+                            weight_decay, num_epochs, optimizer, min_delta, hist_Y_max_over_H=None, intermediateModel_path=None, writer=None, training_dict={}):
     loss_data = list()
     early_stopping = EarlyStopping(tol_steps=10, min_delta=min_delta, device=area_T.device)
     loss_prev = torch.tensor([0.0], device=area_T.device)
@@ -95,7 +97,9 @@ def fit_with_early_stopping(field_comp, training_set_collocation, T_conn, area_T
             if T_conn == None:
                 inp_train.requires_grad = True
             u, v, alpha = field_comp.fieldCalculation(inp_train)
-            loss_E_el, loss_E_d, loss_hist = compute_energy(inp_train, u, v, alpha, hist_alpha, matprop, pffmodel, area_T, T_conn)
+            loss_E_el, loss_E_d, loss_hist, _ = compute_energy(
+                inp_train, u, v, alpha, hist_alpha, matprop, pffmodel, area_T, T_conn, hist_Y_max_over_H
+            )
             loss_var = torch.log10(loss_E_el + loss_E_d + loss_hist)
 
             # weight regularization

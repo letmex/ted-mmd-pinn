@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 from input_data_from_mesh import prep_input_data
+from compute_energy import compute_energy
 from fit import fit, fit_with_early_stopping
 from optim import *
 from plotting import plot_field
@@ -26,6 +27,7 @@ def train(field_comp, disp, pffmodel, matprop, crack_dict, numr_dict, optimizer_
     # Initial training #############################################################
     # Prepare initial input data
     inp, T_conn, area_T, hist_alpha = prep_input_data(matprop, pffmodel, crack_dict, numr_dict, mesh_file=coarse_mesh_file, device=device)
+    hist_Y_max_over_H = torch.zeros_like(hist_alpha)
     outp = torch.zeros(inp.shape[0], 1).to(device)
     training_set = DataLoader(torch.utils.data.TensorDataset(inp, outp), batch_size=inp.shape[0], shuffle=False)
     field_comp.lmbda = torch.tensor(disp[0]).to(device)
@@ -38,7 +40,7 @@ def train(field_comp, disp, pffmodel, matprop, crack_dict, numr_dict, optimizer_
     optimizer = get_optimizer(NNparams, "LBFGS")
     loss_data1 = fit(field_comp, training_set, T_conn, area_T, hist_alpha, matprop, pffmodel,
                      optimizer_dict["weight_decay"], num_epochs=n_epochs, optimizer=optimizer, 
-                     intermediateModel_path=None, writer=writer, training_dict=training_dict)
+                     hist_Y_max_over_H=hist_Y_max_over_H, intermediateModel_path=None, writer=writer, training_dict=training_dict)
     loss_data = loss_data + loss_data1
 
     n_epochs = optimizer_dict["n_epochs_RPROP"]
@@ -46,7 +48,7 @@ def train(field_comp, disp, pffmodel, matprop, crack_dict, numr_dict, optimizer_
     optimizer = get_optimizer(NNparams, "RPROP")
     loss_data2 = fit_with_early_stopping(field_comp, training_set, T_conn, area_T, hist_alpha, matprop, pffmodel,
                                          optimizer_dict["weight_decay"], num_epochs=n_epochs, optimizer=optimizer, min_delta=optimizer_dict["optim_rel_tol_pretrain"], 
-                                         intermediateModel_path=None, writer=writer, training_dict=training_dict)
+                                         hist_Y_max_over_H=hist_Y_max_over_H, intermediateModel_path=None, writer=writer, training_dict=training_dict)
     loss_data = loss_data + loss_data2
 
     end = time.time()
@@ -64,6 +66,8 @@ def train(field_comp, disp, pffmodel, matprop, crack_dict, numr_dict, optimizer_
 
     # Prepare input data
     inp, T_conn, area_T, hist_alpha = prep_input_data(matprop, pffmodel, crack_dict, numr_dict, mesh_file=fine_mesh_file, device=device)
+    hist_alpha_bar = torch.zeros_like(hist_alpha)
+    hist_Y_max_over_H = torch.zeros_like(hist_alpha)
     outp = torch.zeros(inp.shape[0], 1).to(device)
     training_set = DataLoader(torch.utils.data.TensorDataset(inp, outp), batch_size=inp.shape[0], shuffle=False)
 
@@ -81,7 +85,7 @@ def train(field_comp, disp, pffmodel, matprop, crack_dict, numr_dict, optimizer_
             optimizer = get_optimizer(NNparams, "LBFGS")
             loss_data1 = fit(field_comp, training_set, T_conn, area_T, hist_alpha, matprop, pffmodel,
                              optimizer_dict["weight_decay"], num_epochs=n_epochs, optimizer=optimizer,
-                             intermediateModel_path=None, writer=writer, training_dict=training_dict)
+                             hist_Y_max_over_H=hist_Y_max_over_H, intermediateModel_path=None, writer=writer, training_dict=training_dict)
             loss_data = loss_data + loss_data1
 
         if optimizer_dict["n_epochs_RPROP"] > 0:
@@ -90,11 +94,24 @@ def train(field_comp, disp, pffmodel, matprop, crack_dict, numr_dict, optimizer_
             optimizer = get_optimizer(NNparams, "RPROP")
             loss_data2 = fit_with_early_stopping(field_comp, training_set, T_conn, area_T, hist_alpha, matprop, pffmodel,
                                                  optimizer_dict["weight_decay"], num_epochs=n_epochs, optimizer=optimizer, min_delta=optimizer_dict["optim_rel_tol"],
-                                                 intermediateModel_path=intermediateModel_path, writer=writer, training_dict=training_dict)
+                                                 hist_Y_max_over_H=hist_Y_max_over_H, intermediateModel_path=intermediateModel_path, writer=writer, training_dict=training_dict)
             loss_data = loss_data + loss_data2
 
         end = time.time()
         print(f"Execution time: {(end-start)/60:.03f}minutes")
+
+        with torch.no_grad():
+            u_curr, v_curr, alpha_curr = field_comp.fieldCalculation(inp)
+            _, _, _, Y_bar = compute_energy(inp, u_curr, v_curr, alpha_curr, hist_alpha, matprop, pffmodel, area_T, T_conn, hist_Y_max_over_H)
+            temp_boost = pffmodel.temperature_boost(inp)
+            if not torch.is_tensor(temp_boost):
+                temp_boost = torch.tensor(temp_boost, device=inp.device, dtype=inp.dtype)
+            temp_boost = temp_boost.view(-1) if temp_boost.ndim > 0 else temp_boost
+            if temp_boost.numel() == 1:
+                temp_boost = temp_boost.expand_as(Y_bar)
+            alpha_rate = Y_bar * temp_boost
+            hist_alpha_bar = torch.clamp(hist_alpha_bar + alpha_rate, max=1.0)
+            hist_Y_max_over_H = torch.maximum(hist_Y_max_over_H, Y_bar)
 
         hist_alpha = field_comp.update_hist_alpha(inp)
 

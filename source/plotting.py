@@ -53,7 +53,7 @@ def plot_energy(field_comp, disp, pffmodel, matprop, inp, T_conn, area_elem, tra
         if T_conn == None:
             inp.requires_grad = True
         u, v, alpha = field_comp.fieldCalculation(inp)
-        E_el, E_d, _ = compute_energy(inp, u, v, alpha, alpha, matprop, pffmodel, area_elem, T_conn)
+        E_el, E_d, _, _ = compute_energy(inp, u, v, alpha, alpha, matprop, pffmodel, area_elem, T_conn)
         E_el, E_d = E_el.detach().numpy(), E_d.detach().numpy()
         energy = np.append(energy, np.array([[E_el, E_d]]), axis = 0)
         j += 1
