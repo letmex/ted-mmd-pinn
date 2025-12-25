@@ -18,7 +18,7 @@ class EarlyStopping:
         self.early_stop = False        
         
     def __call__(self, train_loss, train_loss_prev):
-        delta = torch.abs(train_loss - train_loss_prev)/(torch.abs(train_loss_prev)+np.finfo(float).eps)
+        delta = torch.abs(train_loss - train_loss_prev) / (torch.abs(train_loss_prev) + np.finfo(float).eps)
         if delta > self.min_delta:
             self.counter = self.counter * 0
         else:
@@ -29,22 +29,32 @@ class EarlyStopping:
 
 
 def fit(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matprop, pffmodel, 
-        weight_decay, num_epochs, optimizer, intermediateModel_path=None, writer=None, training_dict={}):
+        weight_decay, num_epochs, optimizer, hist_Y_max_over_H=None,
+        intermediateModel_path=None, writer=None, training_dict={}):
     loss_data = list()
     
     # Loop over epochs
     for epoch in range(num_epochs):
         loop = tqdm(training_set_collocation, miniters=25)
         # Loop over batches
-        for j, (inp_train, outp_train)  in enumerate(loop):
+        for j, (inp_train, outp_train) in enumerate(loop):
             
             def closure():
                 optimizer.zero_grad()
-                if T_conn == None:
+                if T_conn is None:
                     inp_train.requires_grad = True
+
+                # 兼容 fieldCalculation 返回多个量的写法
                 field_outputs = field_comp.fieldCalculation(inp_train)
                 u, v, alpha = field_outputs[0], field_outputs[1], field_outputs[2]
-                loss_E_el, loss_E_d, loss_hist = compute_energy(inp_train, u, v, alpha, hist_alpha, matprop, pffmodel, area_T, T_conn)
+
+                # 新版 compute_energy，带 hist_Y_max_over_H，返回 4 个量
+                loss_E_el, loss_E_d, loss_hist, _ = compute_energy(
+                    inp_train, u, v, alpha,
+                    hist_alpha, matprop, pffmodel,
+                    area_T, T_conn, hist_Y_max_over_H
+                )
+
                 loss_var = torch.log10(loss_E_el + loss_E_d + loss_hist)
 
                 # weight regularization
@@ -54,10 +64,14 @@ def fit(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matpro
                         if 'weight' in name:
                             loss_reg += torch.sum(param**2)
 
-                loss = loss_var + weight_decay*loss_reg
+                loss = loss_var + weight_decay * loss_reg
 
                 if writer is not None:
-                    writer.add_scalars('U_p_'+str(field_comp.lmbda.item()), {'loss':loss.item(), "loss_E":loss_var.item()}, epoch)
+                    writer.add_scalars(
+                        'U_p_' + str(field_comp.lmbda.item()),
+                        {'loss': loss.item(), "loss_E": loss_var.item()},
+                        epoch
+                    )
 
                 loop.set_description(f"U_p: {field_comp.lmbda}, Epoch [{epoch}/{num_epochs}]")
                 loop.set_postfix(loss=loss.item(), loss_E=loss_var.item())
@@ -67,9 +81,11 @@ def fit(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matpro
                     idx = len(loss_data)
                     steps = training_dict["save_model_every_n"]
                     if steps > 0 and idx >= steps and idx % steps == 0:
-                        intermModel_path = intermediateModel_path/Path('intermediate_1NN_' + str(int(field_comp.lmbda*1000000)) + 'by1000000_' + str(idx) + '.pt')
+                        intermModel_path = intermediateModel_path / Path(
+                            'intermediate_1NN_' + str(int(field_comp.lmbda * 1000000)) +
+                            'by1000000_' + str(idx) + '.pt'
+                        )
                         torch.save(field_comp.net.state_dict(), intermModel_path)
-
 
                 loss.backward()
                 return loss
@@ -80,8 +96,10 @@ def fit(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matpro
 
 
 
-def fit_with_early_stopping(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matprop, pffmodel, 
-                            weight_decay, num_epochs, optimizer, min_delta, intermediateModel_path=None, writer=None, training_dict={}):
+def fit_with_early_stopping(field_comp, training_set_collocation, T_conn, area_T, hist_alpha,
+                            matprop, pffmodel, weight_decay, num_epochs, optimizer, min_delta,
+                            hist_Y_max_over_H=None, intermediateModel_path=None,
+                            writer=None, training_dict={}):
     loss_data = list()
     early_stopping = EarlyStopping(tol_steps=10, min_delta=min_delta, device=area_T.device)
     loss_prev = torch.tensor([0.0], device=area_T.device)
@@ -90,14 +108,21 @@ def fit_with_early_stopping(field_comp, training_set_collocation, T_conn, area_T
     for epoch in range(num_epochs):
         loop = tqdm(training_set_collocation, miniters=25)
         # Loop over batches
-        for j, (inp_train, outp_train)  in enumerate(loop):
+        for j, (inp_train, outp_train) in enumerate(loop):
             
             optimizer.zero_grad()
-            if T_conn == None:
+            if T_conn is None:
                 inp_train.requires_grad = True
+
             field_outputs = field_comp.fieldCalculation(inp_train)
             u, v, alpha = field_outputs[0], field_outputs[1], field_outputs[2]
-            loss_E_el, loss_E_d, loss_hist = compute_energy(inp_train, u, v, alpha, hist_alpha, matprop, pffmodel, area_T, T_conn)
+
+            loss_E_el, loss_E_d, loss_hist, _ = compute_energy(
+                inp_train, u, v, alpha,
+                hist_alpha, matprop, pffmodel,
+                area_T, T_conn, hist_Y_max_over_H
+            )
+
             loss_var = torch.log10(loss_E_el + loss_E_d + loss_hist)
 
             # weight regularization
@@ -107,10 +132,14 @@ def fit_with_early_stopping(field_comp, training_set_collocation, T_conn, area_T
                     if 'weight' in name:
                         loss_reg += torch.sum(param**2)
 
-            loss = loss_var + weight_decay*loss_reg
+            loss = loss_var + weight_decay * loss_reg
 
             if writer is not None:
-                    writer.add_scalars('U_p_'+str(field_comp.lmbda.item()), {'loss':loss.item(), "loss_E":loss_var.item()}, epoch)
+                writer.add_scalars(
+                    'U_p_' + str(field_comp.lmbda.item()),
+                    {'loss': loss.item(), "loss_E": loss_var.item()},
+                    epoch
+                )
 
             loop.set_description(f"U_p: {field_comp.lmbda}, Epoch [{epoch}/{num_epochs}]")
             loop.set_postfix(loss=loss.item(), loss_E=loss_var.item())
@@ -120,7 +149,10 @@ def fit_with_early_stopping(field_comp, training_set_collocation, T_conn, area_T
                 idx = len(loss_data)
                 steps = training_dict["save_model_every_n"]
                 if steps > 0 and idx >= steps and idx % steps == 0:
-                    intermModel_path = intermediateModel_path/Path('intermediate_1NN_' + str(int(field_comp.lmbda*1000000)) + 'by1000000_' + str(idx) + '.pt')
+                    intermModel_path = intermediateModel_path / Path(
+                        'intermediate_1NN_' + str(int(field_comp.lmbda * 1000000)) +
+                        'by1000000_' + str(idx) + '.pt'
+                    )
                     torch.save(field_comp.net.state_dict(), intermModel_path)
 
             loss.backward()

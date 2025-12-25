@@ -39,31 +39,47 @@ def plot_field(inp, field, T, figname, figdir, dpi=300):
     plt.savefig(figdir["pdf"]/Path(str(figname)+'.pdf'), transparent=True, bbox_inches='tight', dpi=dpi)
 
 
-def plot_energy(field_comp, disp, pffmodel, matprop, inp, T_conn, area_elem, trainedModel_path, figdir, total_steps=None):
+def plot_energy(field_comp, disp, pffmodel, matprop, inp, T_conn, area_elem,
+                trainedModel_path, figdir, total_steps=None):
     energy = np.zeros([1, 2])
     n_steps = total_steps if total_steps is not None else len(disp)
 
     j = 0
-    file_exists = True
-    while file_exists:
-        model = trainedModel_path/Path('trained_1NN_'+str(j)+'.pt')
-        if not Path.is_file(model):
+    while True:
+        model = trainedModel_path / Path(f'trained_1NN_{j}.pt')
+        if not model.is_file():      # 注意这里用实例方法 is_file()
             break
-        field_comp.net.load_state_dict(torch.load(model, map_location=torch.device('cpu')))
+
+        # 载入第 j 步训练好的网络
+        field_comp.net.load_state_dict(
+            torch.load(model, map_location=torch.device('cpu'))
+        )
         field_comp.lmbda = torch.tensor(disp[j])
+
+        # 如果输入里还没有 step 这一列，就补上
         inp_step = inp
         if inp_step.shape[1] == 2:
             inp_step = append_step_column(inp_step, step_idx=j, total_steps=n_steps)
-        if T_conn == None:
+
+        if T_conn is None:
             inp_step.requires_grad = True
+
+        # 计算当前步的场变量
         field_outputs = field_comp.fieldCalculation(inp_step)
         u, v, alpha = field_outputs[0], field_outputs[1], field_outputs[2]
-        E_el, E_d, _ = compute_energy(inp_step, u, v, alpha, alpha, matprop, pffmodel, area_elem, T_conn)
+
+        # 计算能量：新版 compute_energy 返回 4 个量，我们只用前 2 个
+        E_el, E_d, _, _ = compute_energy(
+            inp_step, u, v, alpha,
+            alpha,          # 这里 hist_alpha 简单取当前 alpha，用于后处理
+            matprop, pffmodel, area_elem, T_conn
+        )
+
         E_el, E_d = E_el.detach().numpy(), E_d.detach().numpy()
-        energy = np.append(energy, np.array([[E_el, E_d]]), axis = 0)
+        energy = np.append(energy, np.array([[E_el, E_d]]), axis=0)
         j += 1
 
-    if j>0:
+    if j > 0:
         energy = np.delete(energy, 0, 0)
 
         fig, ax = plt.subplots(figsize=(3, 2))
@@ -78,6 +94,7 @@ def plot_energy(field_comp, disp, pffmodel, matprop, inp, T_conn, area_elem, tra
         plt.savefig(figdir["pdf"]/Path('energy_Up.pdf'), transparent=True, bbox_inches='tight')
     else:
         print(f"No trained network available in {trainedModel_path}")
+
 
 
 def img_plot(field_comp, pffmodel, matprop, inp, T, area_elem, figdir, dpi=300, step_idx=None, total_steps=None):
