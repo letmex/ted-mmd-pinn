@@ -29,7 +29,7 @@ class EarlyStopping:
 
 
 def fit(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matprop, pffmodel, 
-        weight_decay, num_epochs, optimizer, hist_Y_max_over_H=None,
+        weight_decay, num_epochs, optimizer, hist_Y_max_over_H=None, hist_alpha_bar=None,
         intermediateModel_path=None, writer=None, training_dict={}):
     loss_data = list()
     
@@ -52,7 +52,7 @@ def fit(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matpro
                 loss_E_el, loss_E_d, loss_hist, _ = compute_energy(
                     inp_train, u, v, alpha,
                     hist_alpha, matprop, pffmodel,
-                    area_T, T_conn, hist_Y_max_over_H
+                    area_T, T_conn, hist_Y_max_over_H, hist_alpha_bar
                 )
 
                 loss_var = torch.log10(loss_E_el + loss_E_d + loss_hist)
@@ -98,7 +98,7 @@ def fit(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matpro
 
 def fit_with_early_stopping(field_comp, training_set_collocation, T_conn, area_T, hist_alpha,
                             matprop, pffmodel, weight_decay, num_epochs, optimizer, min_delta,
-                            hist_Y_max_over_H=None, intermediateModel_path=None,
+                            hist_Y_max_over_H=None, hist_alpha_bar=None, intermediateModel_path=None,
                             writer=None, training_dict={}):
     loss_data = list()
     early_stopping = EarlyStopping(tol_steps=10, min_delta=min_delta, device=area_T.device)
@@ -120,7 +120,7 @@ def fit_with_early_stopping(field_comp, training_set_collocation, T_conn, area_T
             loss_E_el, loss_E_d, loss_hist, _ = compute_energy(
                 inp_train, u, v, alpha,
                 hist_alpha, matprop, pffmodel,
-                area_T, T_conn, hist_Y_max_over_H
+                area_T, T_conn, hist_Y_max_over_H, hist_alpha_bar
             )
 
             loss_var = torch.log10(loss_E_el + loss_E_d + loss_hist)
