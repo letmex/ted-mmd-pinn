@@ -6,6 +6,7 @@ class PFFModel:
         self.PFF_model = PFF_model
         self.se_split = se_split
         self.tol_ir = tol_ir
+        self.cached_state = {}
         
         if self.se_split != 'volumetric':
             warnings.warn('Prescribed strain energy split is not volumetric. No strain energy split will be applied.')
@@ -23,6 +24,13 @@ class PFFModel:
             return alpha, 1.0, 8.0/3.0
         elif self.PFF_model == 'AT2':
             return alpha**2, 2*alpha, 2.0
+
+    # surface energy density and auxiliaries for fracture contribution
+    def surface_energy(self, alpha, grad_alpha_x, grad_alpha_y, matprop):
+        damageFn, damageFn_prime, c_w = self.damageFun(alpha)
+        surface_energy = matprop.w1/c_w*(damageFn + matprop.l0**2*(grad_alpha_x**2+grad_alpha_y**2))
+
+        return surface_energy, damageFn, damageFn_prime, c_w
     
     # Irreversibility penalty
     def irrPenalty(self):
