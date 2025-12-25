@@ -22,23 +22,48 @@ def compute_energy_per_elem(inp, u, v, alpha, hist_alpha, matprop, pffmodel, are
 
     if T_conn == None:
         alpha_elem = alpha
+        hist_alpha_elem = hist_alpha
     else:
         alpha_elem = (alpha[T_conn[:, 0]] + alpha[T_conn[:, 1]] + alpha[T_conn[:, 2]])/3
+        hist_alpha_elem = (hist_alpha[T_conn[:, 0]] + hist_alpha[T_conn[:, 1]] + hist_alpha[T_conn[:, 2]])/3
     
-    damageFn, _, c_w = pffmodel.damageFun(alpha_elem)
+    fun_EDegrade, fun_EDegrade_prime = pffmodel.Edegrade(alpha_elem)
     weight_penalty = pffmodel.irrPenalty()
 
-    E_el_elem, _ = strain_energy_with_split(strain_11, strain_22, strain_12, alpha_elem, matprop, pffmodel)
+    E_el_elem, E_el_pos = strain_energy_with_split(strain_11, strain_22, strain_12, alpha_elem, matprop, pffmodel)
     E_el = area_elem*E_el_elem
-    E_d = (matprop.w1/c_w*(damageFn + matprop.l0**2*(grad_alpha_x**2+grad_alpha_y**2)))*area_elem
+    surface_energy, damageFn, damageFn_prime, c_w = pffmodel.surface_energy(alpha_elem, grad_alpha_x, grad_alpha_y, matprop)
+    E_d = surface_energy*area_elem
 
-    dAlpha = alpha - hist_alpha
-    if T_conn == None:
-        dAlpha_elem = dAlpha
-    else:
-        dAlpha_elem = (dAlpha[T_conn[:, 0]] + dAlpha[T_conn[:, 1]] + dAlpha[T_conn[:, 2]])/3
+    stress_11, stress_22, stress_12 = stress(strain_11, strain_22, strain_12, alpha_elem, matprop, pffmodel)
+    mean_stress = 0.5*(stress_11 + stress_22)
+    stress_radius = torch.sqrt(((stress_11 - stress_22)/2)**2 + stress_12**2 + torch.finfo(alpha_elem.dtype).eps)
+    sigma_1 = mean_stress + stress_radius
+    tau_max = stress_radius
+    E_bar = torch.clamp(fun_EDegrade*matprop.mat_E, min=torch.finfo(alpha_elem.dtype).eps)
+    G_bar = torch.clamp(fun_EDegrade*matprop.mat_mu, min=torch.finfo(alpha_elem.dtype).eps)
+    Y_T = sigma_1**2/(2.0*E_bar)
+    Y_S = tau_max**2/(2.0*G_bar)
+    Y_bar = Y_T + Y_S
+
+    H = torch.maximum(hist_alpha_elem, Y_bar)
+
+    dAlpha_elem = Y_bar - hist_alpha_elem
     hist_penalty = nn.ReLU()(-dAlpha_elem)
     E_hist_penalty = 0.5*matprop.w1*weight_penalty*hist_penalty**2 * area_elem
+
+    pffmodel.cached_state = {
+        "E_el_pos": E_el_pos,
+        "Y_bar": Y_bar,
+        "Y_T": Y_T,
+        "Y_S": Y_S,
+        "H": H,
+        "g_alpha": fun_EDegrade,
+        "g_alpha_prime": fun_EDegrade_prime,
+        "damageFn": damageFn,
+        "damageFn_prime": damageFn_prime,
+        "c_w": c_w,
+    }
 
     return E_el, E_d, E_hist_penalty
 
