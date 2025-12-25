@@ -78,6 +78,7 @@ def train(field_comp, load_schedule, pffmodel, matprop, crack_dict, numr_dict,
         optimizer_dict["weight_decay"], num_epochs=n_epochs,
         optimizer=optimizer,
         hist_Y_max_over_H=hist_Y_max_over_H,
+        hist_alpha_bar=None,
         intermediateModel_path=None,
         writer=writer,
         training_dict=training_dict
@@ -94,6 +95,7 @@ def train(field_comp, load_schedule, pffmodel, matprop, crack_dict, numr_dict,
         optimizer=optimizer,
         min_delta=optimizer_dict["optim_rel_tol_pretrain"],
         hist_Y_max_over_H=hist_Y_max_over_H,
+        hist_alpha_bar=None,
         intermediateModel_path=None,
         writer=writer,
         training_dict=training_dict
@@ -154,6 +156,7 @@ def train(field_comp, load_schedule, pffmodel, matprop, crack_dict, numr_dict,
                 pffmodel, optimizer_dict["weight_decay"], num_epochs=n_epochs,
                 optimizer=optimizer,
                 hist_Y_max_over_H=hist_Y_max_over_H,
+                hist_alpha_bar=hist_alpha_bar,
                 intermediateModel_path=None,
                 writer=writer,
                 training_dict=training_dict
@@ -171,6 +174,7 @@ def train(field_comp, load_schedule, pffmodel, matprop, crack_dict, numr_dict,
                 optimizer=optimizer,
                 min_delta=optimizer_dict["optim_rel_tol"],
                 hist_Y_max_over_H=hist_Y_max_over_H,
+                hist_alpha_bar=hist_alpha_bar,
                 intermediateModel_path=intermediateModel_path,
                 writer=writer,
                 training_dict=training_dict
@@ -190,7 +194,7 @@ def train(field_comp, load_schedule, pffmodel, matprop, crack_dict, numr_dict,
             _, _, _, Y_bar = compute_energy(
                 inp, u_curr, v_curr, alpha_curr,
                 hist_alpha, matprop, pffmodel,
-                area_T, T_conn, hist_Y_max_over_H
+                area_T, T_conn, hist_Y_max_over_H, hist_alpha_bar
             )
 
             # 温度放大因子（可为常数或场）
@@ -214,18 +218,29 @@ def train(field_comp, load_schedule, pffmodel, matprop, crack_dict, numr_dict,
             # 疲劳速率 & 累积（截断到 1.0）
             alpha_rate = Y_bar * temp_boost
             hist_alpha_bar = torch.clamp(hist_alpha_bar + alpha_rate, max=1.0)
+            if not hasattr(field_comp, "hist_aux_state") or field_comp.hist_aux_state is None:
+                field_comp.hist_aux_state = {}
+            field_comp.hist_aux_state["fatigue"] = hist_alpha_bar.detach()
 
             # TEF 历史量 H 取最大值
             hist_Y_max_over_H = torch.maximum(hist_Y_max_over_H, Y_bar)
 
         # 更新 hist_alpha（兼容返回 tuple 的新版接口）
+        prev_aux_state = field_comp.hist_aux_state if hasattr(field_comp, "hist_aux_state") else {}
         hist_update = field_comp.update_hist_alpha(inp)
         if isinstance(hist_update, tuple):
             hist_alpha, aux_state = hist_update
-            field_comp.hist_aux_state = aux_state
+            merged_state = prev_aux_state.copy() if isinstance(prev_aux_state, dict) else {}
+            if isinstance(aux_state, dict):
+                merged_state.update(aux_state)
+            field_comp.hist_aux_state = merged_state
         else:
             hist_alpha = hist_update
-            field_comp.hist_aux_state = {}
+            field_comp.hist_aux_state = prev_aux_state if isinstance(prev_aux_state, dict) else {}
+
+        # Persist fatigue history if provided by field computation
+        if isinstance(field_comp.hist_aux_state, dict) and "fatigue" in field_comp.hist_aux_state:
+            hist_alpha_bar = field_comp.hist_aux_state["fatigue"].detach()
 
         # -----------------------------------------------------
 

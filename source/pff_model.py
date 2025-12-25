@@ -99,11 +99,12 @@ class PFFModel:
     # fatigue degradation of fracture toughness
     def fatigue_degrade(self, alpha_bar):
         alpha_bar_clamped = torch.clamp(alpha_bar, min=0.0)
-        fatigue_exponent = ((alpha_bar_clamped - self.alpha_T) /
-                            torch.clamp(1 - self.alpha_T, min=1e-8)).clamp(min=0.0)
+        alpha_T = torch.as_tensor(self.alpha_T, device=alpha_bar.device, dtype=alpha_bar.dtype)
+        one_minus_alpha_T = torch.clamp(1 - alpha_T, min=torch.tensor(1e-8, device=alpha_bar.device, dtype=alpha_bar.dtype))
+        fatigue_exponent = ((alpha_bar_clamped - alpha_T) / one_minus_alpha_T).clamp(min=0.0)
         decay = torch.exp(-fatigue_exponent**self.p_fatigue)
         fatigue_factor = torch.where(
-            alpha_bar_clamped < self.alpha_T,
+            alpha_bar_clamped < alpha_T,
             torch.ones_like(alpha_bar_clamped),
             decay
         )

@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 
 # Computes the total strain energy, damage energy and irreversibility penalty
-def compute_energy(inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T_conn=None, hist_Y_max_over_H=None):
+def compute_energy(inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T_conn=None, hist_Y_max_over_H=None, hist_alpha_bar=None):
     E_el, E_d, E_hist_penalty, Y_bar = compute_energy_per_elem(
-        inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T_conn, hist_Y_max_over_H
+        inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T_conn, hist_Y_max_over_H, hist_alpha_bar
     )
     E_el_sum = torch.sum(E_el)
     E_d_sum = torch.sum(E_d)
@@ -13,7 +13,7 @@ def compute_energy(inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T
     return E_el_sum, E_d_sum, E_hist_sum, Y_bar
 
 
-def compute_energy_per_elem(inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T_conn=None, hist_Y_max_over_H=None):
+def compute_energy_per_elem(inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T_conn=None, hist_Y_max_over_H=None, hist_alpha_bar=None):
     '''
     Computes the energies in each element.
     T_conn = None: an indicator that the input points are the Gauss points of elements and 
@@ -28,11 +28,22 @@ def compute_energy_per_elem(inp, u, v, alpha, hist_alpha, matprop, pffmodel, are
         alpha_elem = (alpha[T_conn[:, 0]] + alpha[T_conn[:, 1]] + alpha[T_conn[:, 2]])/3
     
     damageFn, _, c_w = pffmodel.damageFun(alpha_elem)
+    if hist_alpha_bar is None:
+        hist_alpha_bar_elem = torch.zeros_like(alpha_elem)
+    elif T_conn is None:
+        hist_alpha_bar_elem = hist_alpha_bar
+    else:
+        hist_alpha_bar_elem = (hist_alpha_bar[T_conn[:, 0]] + hist_alpha_bar[T_conn[:, 1]] + hist_alpha_bar[T_conn[:, 2]])/3
     weight_penalty = pffmodel.irrPenalty()
+
+    fatigue_factor = pffmodel.fatigue_degrade(hist_alpha_bar_elem)
+    g_f0 = torch.as_tensor(getattr(pffmodel, "G_f0", 1.0), device=fatigue_factor.device, dtype=fatigue_factor.dtype)
+    fatigue_scale = fatigue_factor / torch.clamp(g_f0, min=torch.finfo(fatigue_factor.dtype).eps)
+    w1_fatigued = matprop.w1 * fatigue_scale
 
     E_el_elem, E_el_p = strain_energy_with_split(strain_11, strain_22, strain_12, alpha_elem, matprop, pffmodel)
     E_el = area_elem*E_el_elem
-    E_d = (matprop.w1/c_w*(damageFn + matprop.l0**2*(grad_alpha_x**2+grad_alpha_y**2)))*area_elem
+    E_d = (w1_fatigued/c_w*(damageFn + matprop.l0**2*(grad_alpha_x**2+grad_alpha_y**2)))*area_elem
 
     dAlpha = alpha - hist_alpha
     if T_conn == None:
