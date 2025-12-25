@@ -2,8 +2,12 @@ import torch
 import torch.nn as nn
 
 # Computes the total strain energy, damage energy and irreversibility penalty
-def compute_energy(inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T_conn=None):
-    E_el, E_d, E_hist_penalty = compute_energy_per_elem(inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T_conn)
+def compute_energy(inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T_conn=None, return_per_elem: bool = False):
+    E_el, E_d, E_hist_penalty, alpha_elem = compute_energy_per_elem(inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T_conn)
+
+    if return_per_elem:
+        return E_el, E_d, E_hist_penalty, alpha_elem
+
     E_el_sum = torch.sum(E_el)
     E_d_sum = torch.sum(E_d)
     E_hist_sum = torch.sum(E_hist_penalty)
@@ -24,7 +28,7 @@ def compute_energy_per_elem(inp, u, v, alpha, hist_alpha, matprop, pffmodel, are
         alpha_elem = alpha
     else:
         alpha_elem = (alpha[T_conn[:, 0]] + alpha[T_conn[:, 1]] + alpha[T_conn[:, 2]])/3
-    
+
     damageFn, _, c_w = pffmodel.damageFun(alpha_elem)
     weight_penalty = pffmodel.irrPenalty()
 
@@ -40,7 +44,7 @@ def compute_energy_per_elem(inp, u, v, alpha, hist_alpha, matprop, pffmodel, are
     hist_penalty = nn.ReLU()(-dAlpha_elem)
     E_hist_penalty = 0.5*matprop.w1*weight_penalty*hist_penalty**2 * area_elem
 
-    return E_el, E_d, E_hist_penalty
+    return E_el, E_d, E_hist_penalty, alpha_elem
 
 
 # Computes the components of strain and gradients of alpha

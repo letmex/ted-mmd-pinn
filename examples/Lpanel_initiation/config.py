@@ -51,11 +51,18 @@ optimizer_dict = {"weight_decay": 1e-5,
                   "n_epochs_RPROP": 10000,
                   "n_epochs_LBFGS": 0,
                   "optim_rel_tol_pretrain": 1e-6,
-                  "optim_rel_tol": 5e-7}
+                  "optim_rel_tol": 5e-7,
+                  "fatigue_cycle_step": 0.5,
+                  "max_cycles": 3,
+                  "energy_tol": 1e-6}
 
 
 # save intermediate model during training every "save_model_every_n" steps
-training_dict = {"save_model_every_n": 100}
+training_dict = {"save_model_every_n": 100,
+                 "fatigue_cycle_step": 0.5,
+                 "max_cycles": 3,
+                 "energy_tol": 1e-6,
+                 "adaptive_loading": False}
 
 '''
 numr_dict:
