@@ -20,7 +20,7 @@ def prep_input_data(matprop, pffmodel, crack_dict, numr_dict, mesh_file, device)
     '''
     assert Path(mesh_file).suffix == '.msh', "Mesh file should be a .msh file"
     
-    X, Y, T_conn, area_T = parse_mesh(filename = mesh_file, gradient_type=numr_dict["gradient_type"])
+    X, Y, T_conn, area_T = parse_mesh(filename=str(mesh_file), gradient_type=numr_dict["gradient_type"])
 
     inp = torch.from_numpy(np.column_stack((X, Y))).to(torch.float).to(device)
     T_conn = torch.from_numpy(T_conn).to(torch.long).to(device)
