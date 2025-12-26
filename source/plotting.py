@@ -12,7 +12,7 @@ from utils import parse_mesh, append_step_column
 
 
 def plot_mesh(mesh_file, figdir):
-    X, Y, T, _ = parse_mesh(filename = mesh_file, gradient_type = 'numerical')
+    X, Y, T, _ = parse_mesh(filename=str(mesh_file), gradient_type = 'numerical')
     fig, ax = plt.subplots(figsize=(4, 4))
     ax.set_aspect('equal')
     ax.triplot(X, Y, T, color='black', linewidth=1, rasterized=True)

@@ -18,6 +18,7 @@ for details of the model.
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(device)
+PATH_ROOT = Path(__file__).parents[0]
 
 
 
@@ -110,8 +111,8 @@ Current implementation only accepts discretization with triangular elements.
 coarse_mesh_file: mesh is fine only where crack is initially present (for efficient pretraining)
 fine_mesh_file: fine discretization also where crack is expected to propagate.
 '''
-coarse_mesh_file = "meshed_geom1.msh"
-fine_mesh_file = "meshed_geom2.msh"
+coarse_mesh_file = PATH_ROOT / "meshed_geom1.msh"
+fine_mesh_file = PATH_ROOT / "meshed_geom2.msh"
 
 ## #############################################################################
 ## #############################################################################
@@ -122,7 +123,6 @@ fine_mesh_file = "meshed_geom2.msh"
 ## ############################################################################
 ## Setting output directory ###################################################
 ## ############################################################################
-PATH_ROOT = Path(__file__).parents[0]
 model_path = PATH_ROOT/Path('hl_'+str(network_dict["hidden_layers"])+
                             '_Neurons_'+str(network_dict["neurons"])+
                             '_activation_'+network_dict["activation"]+
