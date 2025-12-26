@@ -104,24 +104,25 @@ def img_plot(field_comp, pffmodel, matprop, inp, T, area_elem, figdir, dpi=300, 
         input_pts = append_step_column(input_pts, step_idx=step_idx, total_steps=n_steps)
     if T == None:
         input_pts.requires_grad = True
+    spatial_pts = input_pts[..., -2:]
     field_outputs = field_comp.fieldCalculation(input_pts)
     u, v, alpha = field_outputs[0], field_outputs[1], field_outputs[2]
     strain_11, strain_22, strain_12, grad_alpha_x, grad_alpha_y = gradients(input_pts, u, v, alpha, area_elem, T)
 
     if T == None:
-        input_elem = input_pts
+        input_elem = spatial_pts
         alpha_elem = alpha
-    else:    
-        input_elem = (input_pts[T[:, 0], :] + input_pts[T[:, 1], :] + input_pts[T[:, 2], :])/3
+    else:
+        input_elem = (spatial_pts[T[:, 0], :] + spatial_pts[T[:, 1], :] + spatial_pts[T[:, 2], :])/3
         alpha_elem = (alpha[T[:, 0]] + alpha[T[:, 1]] + alpha[T[:, 2]])/3
     stress_11, stress_22, stress_12 = stress(strain_11, strain_22, strain_12, alpha_elem, matprop, pffmodel) 
 
     stress_1 = 0.5*(stress_11 + stress_22) + torch.sqrt((0.5*(stress_11 - stress_22))**2 + stress_12**2)
     stress_2 = 0.5*(stress_11 + stress_22) - torch.sqrt((0.5*(stress_11 - stress_22))**2 + stress_12**2)
 
-    input_pt = copy.deepcopy(input_pts)
-    input_el = copy.deepcopy(input_elem)
-    input_pt, input_el = input_pt.detach().numpy(), input_el.detach().numpy()
+    input_pt = spatial_pts.detach().clone()
+    input_el = input_elem.detach().clone()
+    input_pt, input_el = input_pt.numpy(), input_el.numpy()
     u, v, alpha = u.detach().numpy(), v.detach().numpy(), alpha.detach().numpy()
     strain_11, strain_22, strain_12 = strain_11.detach().numpy(), strain_22.detach().numpy(), strain_12.detach().numpy()
     stress_11, stress_22, stress_12 = stress_11.detach().numpy(), stress_22.detach().numpy(), stress_12.detach().numpy()
@@ -134,20 +135,22 @@ def img_plot(field_comp, pffmodel, matprop, inp, T, area_elem, figdir, dpi=300, 
         T = tri.Triangulation(x, y).triangles
 
     fig, ax = plt.subplots(figsize=(9.5, 2), ncols=3)
+    x = input_pt[:, 0]
+    y = input_pt[:, 1]
     ax[0].set_aspect('equal')
-    tpc0 = ax[0].tripcolor(input_pt[:, 0], input_pt[:, 1], T, u, shading='gouraud', rasterized=True)
+    tpc0 = ax[0].tripcolor(x, y, T, u, shading='gouraud', rasterized=True)
     cbar0 = fig.colorbar(tpc0, ax = ax[0])
     cbar0.formatter.set_powerlimits((0, 0))
     ax[0].set_title(r"$u_{\theta}$")
 
     ax[1].set_aspect('equal')
-    tpc1 = ax[1].tripcolor(input_pt[:, 0], input_pt[:, 1], T, v, shading='gouraud', rasterized=True)
+    tpc1 = ax[1].tripcolor(x, y, T, v, shading='gouraud', rasterized=True)
     cbar1 = fig.colorbar(tpc1, ax = ax[1])
     cbar1.formatter.set_powerlimits((0, 0))
     ax[1].set_title(r"$v_{\theta}$")
 
     ax[2].set_aspect('equal')
-    tpc2 = ax[2].tripcolor(input_pt[:, 0], input_pt[:, 1], T, alpha, shading='gouraud', rasterized=True)
+    tpc2 = ax[2].tripcolor(x, y, T, alpha, shading='gouraud', rasterized=True)
     cbar2 = fig.colorbar(tpc2, ax = ax[2])
     cbar2.formatter.set_powerlimits((0, 0))
     ax[2].set_title(r"$\alpha_{\theta}$")
