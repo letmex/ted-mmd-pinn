@@ -75,7 +75,34 @@ In the normalized formulation, mat_E=1, w1=1, and only nu and l0 are the propert
 '''
 numr_dict = {"alpha_constraint": 'nonsmooth', "gradient_type": 'numerical'}
 PFF_model_dict = {"PFF_model" : 'AT1', "se_split" : 'volumetric', "tol_ir" : 5e-3}
-mat_prop_dict = {"mat_E" : 1.0, "mat_nu" : 0.3, "w1" : 1.0, "l0" : 0.01}
+
+# TEF material properties (finite element values)
+E0 = 8.15e10
+v0 = 0.38
+ft = 3e8
+Gf0 = 2.4
+b0 = 5e-8
+xi = 0.6
+c0 = 3.1416
+p = 2.0
+
+E_bar = E0*(1 - v0)/(1 - 2*v0)/(1 + v0)
+lch_bar = E_bar*Gf0/ft/ft
+w1 = Gf0/lch_bar
+l0 = lch_bar
+
+mat_prop_dict = {"mat_E" : E0,
+                 "mat_nu" : v0,
+                 "w1" : w1,
+                 "l0" : l0,
+                 "ft": ft,
+                 "Gf0": Gf0,
+                 "b0": b0,
+                 "xi": xi,
+                 "c0": c0,
+                 "p": p,
+                 "E_bar": E_bar,
+                 "lch_bar": lch_bar}
 
 
 # Domain definition

@@ -10,10 +10,24 @@ def construct_model(PFF_model_dict, mat_prop_dict, network_dict, domain_extrema,
                         tol_ir = torch.tensor(PFF_model_dict["tol_ir"], device=device))
 
     # Material model
+    def _get_tensor(key):
+        value = mat_prop_dict.get(key, None)
+        if value is None:
+            return None
+        return torch.tensor(value, device=device)
+
     matprop = MaterialProperties(mat_E = torch.tensor(mat_prop_dict["mat_E"], device=device), 
                                 mat_nu = torch.tensor(mat_prop_dict["mat_nu"], device=device), 
                                 w1 = torch.tensor(mat_prop_dict["w1"], device=device), 
-                                l0 = torch.tensor(mat_prop_dict["l0"], device=device))
+                                l0 = torch.tensor(mat_prop_dict["l0"], device=device),
+                                ft = _get_tensor("ft"),
+                                Gf0 = _get_tensor("Gf0"),
+                                b0 = _get_tensor("b0"),
+                                xi = _get_tensor("xi"),
+                                c0 = _get_tensor("c0"),
+                                p = _get_tensor("p"),
+                                E_bar = _get_tensor("E_bar"),
+                                lch_bar = _get_tensor("lch_bar"))
 
     # Neural network
     torch.manual_seed(network_dict["seed"])
