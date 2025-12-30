@@ -5,9 +5,38 @@ from network import NeuralNet, init_xavier
 
 def construct_model(PFF_model_dict, mat_prop_dict, network_dict, domain_extrema, device):
     # Phase field model
-    pffmodel = PFFModel(PFF_model = PFF_model_dict["PFF_model"], 
-                        se_split = PFF_model_dict["se_split"],
-                        tol_ir = torch.tensor(PFF_model_dict["tol_ir"], device=device))
+    pff_kwargs = {
+        "PFF_model": PFF_model_dict["PFF_model"],
+        "se_split": PFF_model_dict["se_split"],
+        "tol_ir": torch.tensor(PFF_model_dict["tol_ir"], device=device),
+    }
+    optional_params = [
+        "c0",
+        "l0",
+        "xi",
+        "kappa_d",
+        "eta_S",
+        "alpha_T",
+        "p_fatigue",
+        "G_f0",
+        "k_T",
+        "theta_0",
+        "a1",
+        "a2",
+        "a3",
+        "ck",
+        "Psi_th",
+        "m_theta",
+        "alpha_max",
+        "Y0",
+        "Y_T",
+        "Y_S",
+        "H",
+    ]
+    for key in optional_params:
+        if key in PFF_model_dict:
+            pff_kwargs[key] = PFF_model_dict[key]
+    pffmodel = PFFModel(**pff_kwargs)
 
     # Material model
     def _get_tensor(key):
