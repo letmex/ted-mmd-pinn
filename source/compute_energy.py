@@ -36,23 +36,8 @@ def compute_energy_per_elem(inp, u, v, alpha, hist_alpha, matprop, pffmodel, are
         hist_alpha_bar_elem = (hist_alpha_bar[T_conn[:, 0]] + hist_alpha_bar[T_conn[:, 1]] + hist_alpha_bar[T_conn[:, 2]])/3
     weight_penalty = pffmodel.irrPenalty()
 
-    fatigue_factor = pffmodel.fatigue_degrade(hist_alpha_bar_elem)
-    g_f0 = torch.as_tensor(getattr(pffmodel, "G_f0", 1.0), device=fatigue_factor.device, dtype=fatigue_factor.dtype)
-    fatigue_scale = fatigue_factor / torch.clamp(g_f0, min=torch.finfo(fatigue_factor.dtype).eps)
-    w1_fatigued = matprop.w1 * fatigue_scale
-
     E_el_elem, E_el_p = strain_energy_with_split(strain_11, strain_22, strain_12, alpha_elem, matprop, pffmodel)
     E_el = area_elem*E_el_elem
-    E_d = (w1_fatigued/c_w*(damageFn + matprop.l0**2*(grad_alpha_x**2+grad_alpha_y**2)))*area_elem
-
-    dAlpha = alpha - hist_alpha
-    if T_conn == None:
-        dAlpha_elem = dAlpha
-    else:
-        dAlpha_elem = (dAlpha[T_conn[:, 0]] + dAlpha[T_conn[:, 1]] + dAlpha[T_conn[:, 2]])/3
-    hist_penalty = nn.ReLU()(-dAlpha_elem)
-    E_hist_penalty = 0.5*matprop.w1*weight_penalty*hist_penalty**2 * area_elem
-
     H = getattr(pffmodel, "H", 1.0)
     drive_elem = E_el_p / H
     if T_conn is None:
@@ -68,6 +53,30 @@ def compute_energy_per_elem(inp, u, v, alpha, hist_alpha, matprop, pffmodel, are
         drive_nodal[mask] = drive_nodal[mask]/nodal_counts[mask]
         hist_drive = drive_nodal.new_zeros(drive_nodal.shape) if hist_Y_max_over_H is None else hist_Y_max_over_H
         Y_bar = torch.maximum(hist_drive, drive_nodal.detach())
+
+    if T_conn is None:
+        Y_bar_for_fatigue = Y_bar
+    else:
+        Y_bar_for_fatigue = (Y_bar[T_conn[:, 0]] + Y_bar[T_conn[:, 1]] + Y_bar[T_conn[:, 2]]) / 3
+
+    fatigue_output = pffmodel.fatigue_degrade(hist_alpha_bar_elem, Y_bar=Y_bar_for_fatigue)
+    if isinstance(fatigue_output, tuple):
+        fatigue_factor = fatigue_output[0]
+    else:
+        fatigue_factor = fatigue_output
+    g_f0 = torch.as_tensor(getattr(pffmodel, "G_f0", 1.0), device=fatigue_factor.device, dtype=fatigue_factor.dtype)
+    fatigue_scale = fatigue_factor / torch.clamp(g_f0, min=torch.finfo(fatigue_factor.dtype).eps)
+    w1_fatigued = matprop.w1 * fatigue_scale
+
+    E_d = (w1_fatigued/c_w*(damageFn + matprop.l0**2*(grad_alpha_x**2+grad_alpha_y**2)))*area_elem
+
+    dAlpha = alpha - hist_alpha
+    if T_conn == None:
+        dAlpha_elem = dAlpha
+    else:
+        dAlpha_elem = (dAlpha[T_conn[:, 0]] + dAlpha[T_conn[:, 1]] + dAlpha[T_conn[:, 2]])/3
+    hist_penalty = nn.ReLU()(-dAlpha_elem)
+    E_hist_penalty = 0.5*matprop.w1*weight_penalty*hist_penalty**2 * area_elem
 
     return E_el, E_d, E_hist_penalty, Y_bar
 
