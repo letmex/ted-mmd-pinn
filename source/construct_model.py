@@ -7,13 +7,16 @@ def construct_model(PFF_model_dict, mat_prop_dict, network_dict, domain_extrema,
     # Phase field model
     pffmodel = PFFModel(PFF_model = PFF_model_dict["PFF_model"], 
                         se_split = PFF_model_dict["se_split"],
-                        tol_ir = torch.tensor(PFF_model_dict["tol_ir"], device=device))
+                        tol_ir = torch.tensor(PFF_model_dict["tol_ir"], device=device),
+                        k_T = float(PFF_model_dict.get("k_T", 0.0)),
+                        theta_0 = float(PFF_model_dict.get("theta_0", 0.0)))
 
     # Material model
     matprop = MaterialProperties(mat_E = torch.tensor(mat_prop_dict["mat_E"], device=device), 
                                 mat_nu = torch.tensor(mat_prop_dict["mat_nu"], device=device), 
                                 w1 = torch.tensor(mat_prop_dict["w1"], device=device), 
-                                l0 = torch.tensor(mat_prop_dict["l0"], device=device))
+                                l0 = torch.tensor(mat_prop_dict["l0"], device=device),
+                                thermal_props = mat_prop_dict.get("thermal_props"))
 
     # Neural network
     torch.manual_seed(network_dict["seed"])

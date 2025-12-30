@@ -74,8 +74,28 @@ w1: Gc/l0, where Gc is energy release rate.
 In the normalized formulation, mat_E=1, w1=1, and only nu and l0 are the properties to be set.
 '''
 numr_dict = {"alpha_constraint": 'nonsmooth', "gradient_type": 'numerical'}
-PFF_model_dict = {"PFF_model" : 'AT1', "se_split" : 'volumetric', "tol_ir" : 5e-3}
-mat_prop_dict = {"mat_E" : 1.0, "mat_nu" : 0.3, "w1" : 1.0, "l0" : 0.01}
+PFF_model_dict = {
+    "PFF_model": 'AT1',
+    "se_split": 'volumetric',
+    "tol_ir": 5e-3,
+    # Thermal fatigue acceleration parameters (from FE table)
+    # exp(k_T * (theta - theta_0)) gives ~2x boost at 523.15 K relative to 293.15 K
+    "k_T": 0.00301,
+    "theta_0": 293.15,
+}
+mat_prop_dict = {
+    "mat_E": 1.0,
+    "mat_nu": 0.3,
+    "w1": 1.0,
+    "l0": 0.01,
+    "thermal_props": {
+        # Thermal expansion (1/K), density (kg/m^3), conductivity (W/m/K), heat capacity (J/kg/K)
+        "alpha": 1.2e-5,
+        "rho": 7800.0,
+        "k0": 45.0,
+        "c": 460.0,
+    },
+}
 
 
 # Domain definition
@@ -94,7 +114,8 @@ crack_dict = {"x_init" : [-0.5], "y_init" : [0], "L_crack" : [0.5], "angle_crack
 loading_angle = torch.tensor([np.pi/2])
 disp = np.concatenate((np.linspace(0.0, 0.075, 4), np.linspace(0.1, 0.2, 21)), axis=0)
 disp = disp[1:]
-temperature = np.linspace(0.0, 1.0, disp.shape[0])
+# FE temperature history (Kelvin): start hot and cool to room temperature in sync with load steps
+temperature = np.linspace(523.15, 293.15, disp.shape[0])
 cycles = np.arange(1, disp.shape[0]+1)
 load_schedule = {"displacement": disp, "temperature": temperature, "cycles": cycles}
 

@@ -18,7 +18,7 @@ class FieldComputation:
 
     '''
     def __init__(self, net, domain_extrema, lmbda, theta, alpha_constraint = 'nonsmooth',
-                 temperature_bounds = (0.0, 1.0), damage_bounds = (0.0, 1.0), fatigue_bounds = (0.0, 1.0)):
+                 temperature_bounds = (293.15, 523.15), damage_bounds = (0.0, 1.0), fatigue_bounds = (0.0, 1.0)):
         self.net = net
         self.domain_extrema = domain_extrema
         self.theta = theta
