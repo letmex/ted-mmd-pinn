@@ -55,7 +55,9 @@ def fit(field_comp, training_set_collocation, T_conn, area_T, hist_alpha, matpro
                     area_T, T_conn, hist_Y_max_over_H, hist_alpha_bar
                 )
 
-                loss_var = torch.log10(loss_E_el + loss_E_d + loss_hist)
+                # Normalize the energy by total measure inside compute_energy to keep
+                # elastic and damage contributions on comparable scales.
+                loss_var = loss_E_el + loss_E_d + loss_hist
 
                 # weight regularization
                 loss_reg = 0.0
@@ -123,7 +125,8 @@ def fit_with_early_stopping(field_comp, training_set_collocation, T_conn, area_T
                 area_T, T_conn, hist_Y_max_over_H, hist_alpha_bar
             )
 
-            loss_var = torch.log10(loss_E_el + loss_E_d + loss_hist)
+            # Use energy densities so elastic and damage terms are balanced without additional scaling.
+            loss_var = loss_E_el + loss_E_d + loss_hist
 
             # weight regularization
             loss_reg = 0.0
