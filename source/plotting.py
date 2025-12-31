@@ -88,7 +88,7 @@ def plot_energy(field_comp, disp, pffmodel, matprop, inp, T_conn, area_elem,
         ax.set_xlim((disp[0], disp[j-1]))
         ax.set_ylim((np.min(energy), np.max(energy)*1.1))
         ax.set_xlabel(r'$U_p$')
-        ax.set_ylabel(r'$\mathcal{E}$')
+        ax.set_ylabel(r'$\mathcal{E}/A$')
         ax.legend(loc=2)
         plt.savefig(figdir["png"]/Path('energy_Up.png'), transparent=True, bbox_inches='tight')
         plt.savefig(figdir["pdf"]/Path('energy_Up.pdf'), transparent=True, bbox_inches='tight')

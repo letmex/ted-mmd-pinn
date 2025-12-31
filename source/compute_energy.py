@@ -10,7 +10,13 @@ def compute_energy(inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T
     E_d_sum = torch.sum(E_d)
     E_hist_sum = torch.sum(E_hist_penalty)
 
-    return E_el_sum, E_d_sum, E_hist_sum, Y_bar
+    area_tensor = torch.as_tensor(area_elem, device=E_el_sum.device, dtype=E_el_sum.dtype)
+    total_measure = torch.clamp(area_tensor.sum(), min=torch.finfo(area_tensor.dtype).eps)
+
+    E_el_density = E_el_sum / total_measure
+    E_d_density = E_d_sum / total_measure
+    E_hist_density = E_hist_sum / total_measure
+    return E_el_density, E_d_density, E_hist_density, Y_bar
 
 
 def compute_energy_per_elem(inp, u, v, alpha, hist_alpha, matprop, pffmodel, area_elem, T_conn=None, hist_Y_max_over_H=None, hist_alpha_bar=None):
