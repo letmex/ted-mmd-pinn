@@ -125,6 +125,7 @@ def train(field_comp, load_schedule, pffmodel, matprop, crack_dict, numr_dict,
     outp = torch.zeros(base_inp.shape[0], 1).to(device)
 
     # 按位移/温度/循环次数逐步加载
+    prev_cycle = cycle_steps[0] if cycle_steps is not None and len(cycle_steps) > 0 else 0.0
     for j, disp_i in enumerate(disp):
         # 当前步的输入：在 base_inp 上加 step 列
         inp = append_step_column(base_inp, step_idx=j, total_steps=total_steps)
@@ -206,24 +207,37 @@ def train(field_comp, load_schedule, pffmodel, matprop, crack_dict, numr_dict,
             if temp_boost.ndim == 0:
                 temp_boost = temp_boost.expand_as(Y_bar)
 
-            
-            if not torch.is_tensor(temp_boost):
-                temp_boost = torch.tensor(
-                    temp_boost, device=inp.device, dtype=inp.dtype
-                )
-            temp_boost = temp_boost.view(-1) if temp_boost.ndim > 0 else temp_boost
-            if temp_boost.numel() == 1:
-                temp_boost = temp_boost.expand_as(Y_bar)
+            # 步长与疲劳归一因子
+            cycle_increment = cycle_steps[j] - prev_cycle if cycle_steps is not None else 1.0
+            load_increment = disp_i - disp[j - 1] if j > 0 else disp_i
+            cycle_factor = torch.tensor(float(cycle_increment) if cycle_increment != 0 else 1.0,
+                                        device=inp.device, dtype=inp.dtype)
+            load_factor = torch.tensor(float(load_increment) if load_increment != 0 else 1.0,
+                                       device=inp.device, dtype=inp.dtype)
+            y_reference = torch.quantile(torch.abs(Y_bar.detach()).view(-1), 0.9)
+            y_reference = torch.clamp(y_reference, min=torch.finfo(y_reference.dtype).eps)
 
-            # 疲劳速率 & 累积（截断到 1.0）
-            alpha_rate = Y_bar * temp_boost
+            # 疲劳速率：归一化并仅在受损区域累积
+            alpha_rate_raw = (Y_bar / y_reference) * temp_boost * cycle_factor * load_factor
+            damage_mask = (
+                alpha_curr.view_as(Y_bar) > 0.1
+            ) | (
+                hist_alpha_bar > 0.1
+            ) | (
+                hist_alpha > 0.1
+            )
+            alpha_rate = torch.where(damage_mask, alpha_rate_raw, torch.zeros_like(alpha_rate_raw))
             hist_alpha_bar = torch.clamp(hist_alpha_bar + alpha_rate, max=1.0)
+            hist_Y_max_over_H = torch.where(
+                damage_mask,
+                torch.maximum(hist_Y_max_over_H, Y_bar),
+                hist_Y_max_over_H
+            )
             if not hasattr(field_comp, "hist_aux_state") or field_comp.hist_aux_state is None:
                 field_comp.hist_aux_state = {}
             field_comp.hist_aux_state["fatigue"] = hist_alpha_bar.detach()
-
-            # TEF 历史量 H 取最大值
-            hist_Y_max_over_H = torch.maximum(hist_Y_max_over_H, Y_bar)
+            field_comp.hist_aux_state["hist_Y_max_over_H"] = hist_Y_max_over_H.detach()
+            prev_cycle = cycle_steps[j] if cycle_steps is not None else prev_cycle
 
         # 更新 hist_alpha（兼容返回 tuple 的新版接口）
         prev_aux_state = field_comp.hist_aux_state if hasattr(field_comp, "hist_aux_state") else {}
